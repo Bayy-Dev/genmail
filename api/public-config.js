@@ -7,5 +7,5 @@ module.exports = async (req, res) => {
   }
   // HANYA field non-sensitif yang boleh keluar sini. Jangan pernah
   // masukkan LINK_SIGNING_SECRET, COOKIE_SECRET, atau WORKER_DELETE_URL.
-  return sendJson(res, 200, { ok: true, emailDomain: config.EMAIL_DOMAIN });
+  return sendJson(res, 200, { ok: true, emailDomains: config.EMAIL_DOMAINS });
 };

@@ -112,9 +112,13 @@ async function doLogout() {
 
 // ── Main menu ────────────────────────────────────────────────────────
 function showMain() {
+  const domains = window.EMAIL_DOMAINS || [];
+  const domainText =
+    domains.length > 1 ? `Generate alamat email sekali pakai (pilihan domain: ${domains.join(", ")}).` : `Generate alamat email sekali pakai di ${domains[0] || "domain ini"}.`;
+
   setScreen(
     "EMAIL GEN BY YORI",
-    [text(`Generate alamat email sekali pakai di ${window.EMAIL_DOMAIN || "domain ini"}.`), text("Pilih menu di bawah:")],
+    [text(domainText), text("Pilih menu di bawah:")],
     [
       [btn("Generate Email", "success", () => showGenChoose())],
       [btn("Riwayat Email", "primary", showRiwayat)],
@@ -142,34 +146,50 @@ function showGenChoose(errorNote) {
   setScreen("GENERATE EMAIL", nodes, [
     [
       btn("BATAL", "danger", showMain),
-      btn("SKIP", "neutral", () => submitGenerate(null)),
+      btn("SKIP", "neutral", () => showChooseDomain(null)),
     ],
-    [btn("Pakai Nama Ini", "success", () => submitGenerate(input.value.trim().toLowerCase()))],
+    [btn("Pakai Nama Ini", "success", () => showChooseDomain(input.value.trim().toLowerCase()))],
   ]);
   input.focus();
 }
 
-function showGenSuggestions(originalName, suggestions, errorNote) {
+// ── Pilih domain (muncul setelah nama diisi/skip) ───────────────────
+function showChooseDomain(customLocalPart) {
+  const domains = window.EMAIL_DOMAINS || [];
+  const nameLabel = customLocalPart ? code(customLocalPart) : text("(nama random)");
+
+  if (domains.length <= 1) {
+    // Cuma 1 domain tersedia -- gak perlu nanya, langsung generate.
+    return submitGenerate(customLocalPart, domains[0]);
+  }
+
+  const nodes = [text("Nama:"), nameLabel, text("Mau pakai domain yang mana?")];
+  const domainRows = domains.map((d) => [btn(d, "primary", () => submitGenerate(customLocalPart, d))]);
+
+  setScreen("GENERATE EMAIL", nodes, [...domainRows, [btn("BATAL", "danger", () => showGenChoose())]]);
+}
+
+function showGenSuggestions(originalName, suggestions, errorNote, domain) {
   const nodes = [];
   const e = text(errorNote || `Nama "${originalName}" udah dipakai.`);
   e.className = "error";
   nodes.push(e);
   nodes.push(text("Pilih salah satu saran di bawah, atau balik ke menu buat coba nama lain:"));
 
-  const suggestionRow = suggestions.map((s) => btn(s, "primary", () => submitGenerate(s)));
+  const suggestionRow = suggestions.map((s) => btn(s, "primary", () => submitGenerate(s, domain)));
 
   setScreen("GENERATE EMAIL", nodes, [
     suggestionRow,
-    [btn("BATAL", "danger", showMain), btn("SKIP", "neutral", () => submitGenerate(null))],
+    [btn("BATAL", "danger", showMain), btn("SKIP", "neutral", () => submitGenerate(null, domain))],
   ]);
 }
 
-async function submitGenerate(customLocalPart) {
+async function submitGenerate(customLocalPart, domain) {
   setScreen("GENERATE EMAIL", [text("⏳ Memproses...")], []);
 
   const { status, data } = await api("/api/generate", {
     method: "POST",
-    body: { customLocalPart: customLocalPart || null },
+    body: { customLocalPart: customLocalPart || null, domain: domain || null },
   });
 
   if (status === 401) return showLogin("Sesi habis, login lagi ya.");
@@ -179,7 +199,7 @@ async function submitGenerate(customLocalPart) {
   }
 
   if (status === 409 && data.taken) {
-    return showGenSuggestions(customLocalPart, data.suggestions || [], data.error);
+    return showGenSuggestions(customLocalPart, data.suggestions || [], data.error, domain);
   }
 
   if (status === 429 && data.cooldown) {
@@ -278,7 +298,7 @@ async function doDelete(entry) {
 (async function init() {
   try {
     const { data } = await api("/api/public-config");
-    if (data.ok) window.EMAIL_DOMAIN = data.emailDomain;
+    if (data.ok) window.EMAIL_DOMAINS = data.emailDomains || [];
   } catch (e) {
     // fallback: tetap lanjut meski gagal ambil domain
   }

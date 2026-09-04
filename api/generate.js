@@ -38,6 +38,15 @@ module.exports = async (req, res) => {
     customLocalPart = String(body.customLocalPart).trim().toLowerCase();
   }
 
+  let domain = cfg.EMAIL_DOMAINS[0];
+  if (body.domain) {
+    const requested = String(body.domain).trim().toLowerCase();
+    if (!cfg.EMAIL_DOMAINS.includes(requested)) {
+      return sendJson(res, 400, { ok: false, error: `Domain "${requested}" gak valid.` });
+    }
+    domain = requested;
+  }
+
   // ── Kalau nama custom dikasih: validasi + reserve dulu (SAMA kayak
   // urutan di bot -- reserve terjadi SEBELUM cek cooldown). ──────────
   if (customLocalPart) {
@@ -50,7 +59,7 @@ module.exports = async (req, res) => {
 
     let reserveResult;
     try {
-      reserveResult = await reserveLocalPart(cfg, customLocalPart);
+      reserveResult = await reserveLocalPart(cfg, customLocalPart, domain);
     } catch (e) {
       return sendJson(res, 502, { ok: false, error: `Gagal cek ketersediaan nama (${e.message}).` });
     }
@@ -78,7 +87,7 @@ module.exports = async (req, res) => {
 
   // ── Generate + simpan ke riwayat (KV, dipakai bareng lintas
   // device -- gantinya cookie gm_history per-browser). ──────────────
-  const { email, link } = generateGenmail(cfg, customLocalPart);
+  const { email, link } = generateGenmail(cfg, customLocalPart, domain);
   const entry = { id: crypto.randomUUID().slice(0, 8), email, link, createdAt: now };
 
   let history;
