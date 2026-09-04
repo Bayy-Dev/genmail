@@ -1,0 +1,9 @@
+{
+  "name": "web-genmail",
+  "version": "1.0.0",
+  "description": "Versi web dari telegram-genmail-bot - alur & cara kerja sama persis, deploy di Vercel",
+  "private": true,
+  "dependencies": {
+    "cookie": "^0.6.0"
+  }
+}

@@ -1,0 +1,295 @@
+const titleEl = document.getElementById("screen-title");
+const bodyEl = document.getElementById("screen-body");
+const btnsEl = document.getElementById("screen-buttons");
+
+function setScreen(title, bodyNodes, buttonRows) {
+  titleEl.textContent = title;
+  bodyEl.replaceChildren(...bodyNodes);
+  btnsEl.replaceChildren();
+  for (const row of buttonRows) {
+    const rowEl = document.createElement("div");
+    rowEl.className = "row";
+    for (const btn of row) rowEl.appendChild(btn);
+    btnsEl.appendChild(rowEl);
+  }
+}
+
+function text(str) {
+  const p = document.createElement("div");
+  p.textContent = str;
+  return p;
+}
+
+function code(str) {
+  const c = document.createElement("code");
+  c.textContent = str;
+  return c;
+}
+
+function btn(label, style, onClick, opts = {}) {
+  const b = document.createElement("button");
+  b.className = `btn ${style}`;
+  b.textContent = label;
+  if (opts.disabled) b.disabled = true;
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function linkBtn(label, url) {
+  const a = document.createElement("a");
+  a.className = "btn primary";
+  a.textContent = label;
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  a.style.textAlign = "center";
+  a.style.textDecoration = "none";
+  a.style.display = "block";
+  return a;
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, {
+    method: opts?.method || "GET",
+    headers: opts?.body ? { "Content-Type": "application/json" } : undefined,
+    body: opts?.body ? JSON.stringify(opts.body) : undefined,
+  });
+  let data = {};
+  try {
+    data = await res.json();
+  } catch (e) {
+    // ignore
+  }
+  return { status: res.status, data };
+}
+
+// ── Login ────────────────────────────────────────────────────────────
+function showLogin(errorNote) {
+  const nodes = [];
+  if (errorNote) {
+    const e = text(errorNote);
+    e.className = "error";
+    nodes.push(e);
+  }
+  nodes.push(text("Login dulu buat lanjut."));
+
+  const userInput = document.createElement("input");
+  userInput.type = "text";
+  userInput.placeholder = "Username";
+  userInput.autocomplete = "username";
+
+  const passInput = document.createElement("input");
+  passInput.type = "password";
+  passInput.placeholder = "Password";
+  passInput.autocomplete = "current-password";
+  passInput.style.marginTop = "0";
+
+  nodes.push(userInput, passInput);
+
+  const doLogin = () => submitLogin(userInput.value.trim(), passInput.value);
+  passInput.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") doLogin();
+  });
+
+  setScreen("LOGIN", nodes, [[btn("Login", "success", doLogin)]]);
+  userInput.focus();
+}
+
+async function submitLogin(username, password) {
+  setScreen("LOGIN", [text("⏳ Memproses...")], []);
+  const { status, data } = await api("/api/login", { method: "POST", body: { username, password } });
+
+  if (status === 200 && data.ok) {
+    return showMain();
+  }
+  return showLogin(data.error || "Gagal login, coba lagi.");
+}
+
+async function doLogout() {
+  await api("/api/logout", { method: "POST" });
+  showLogin();
+}
+
+// ── Main menu ────────────────────────────────────────────────────────
+function showMain() {
+  setScreen(
+    "EMAIL GEN BY YORI",
+    [text(`Generate alamat email sekali pakai di ${window.EMAIL_DOMAIN || "domain ini"}.`), text("Pilih menu di bawah:")],
+    [
+      [btn("Generate Email", "success", () => showGenChoose())],
+      [btn("Riwayat Email", "primary", showRiwayat)],
+      [btn("Logout", "neutral", doLogout)],
+    ]
+  );
+}
+
+// ── Generate submenu ─────────────────────────────────────────────────
+function showGenChoose(errorNote) {
+  const nodes = [];
+  if (errorNote) {
+    const e = text(errorNote);
+    e.className = "error";
+    nodes.push(e);
+  }
+  nodes.push(text("Mau nama custom? Ketik nama yang kamu mau (huruf kecil/angka aja, 3-64 karakter)."));
+  nodes.push(text("Atau tap SKIP buat nama random."));
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "nama-custom";
+  nodes.push(input);
+
+  setScreen("GENERATE EMAIL", nodes, [
+    [
+      btn("BATAL", "danger", showMain),
+      btn("SKIP", "neutral", () => submitGenerate(null)),
+    ],
+    [btn("Pakai Nama Ini", "success", () => submitGenerate(input.value.trim().toLowerCase()))],
+  ]);
+  input.focus();
+}
+
+function showGenSuggestions(originalName, suggestions, errorNote) {
+  const nodes = [];
+  const e = text(errorNote || `Nama "${originalName}" udah dipakai.`);
+  e.className = "error";
+  nodes.push(e);
+  nodes.push(text("Pilih salah satu saran di bawah, atau balik ke menu buat coba nama lain:"));
+
+  const suggestionRow = suggestions.map((s) => btn(s, "primary", () => submitGenerate(s)));
+
+  setScreen("GENERATE EMAIL", nodes, [
+    suggestionRow,
+    [btn("BATAL", "danger", showMain), btn("SKIP", "neutral", () => submitGenerate(null))],
+  ]);
+}
+
+async function submitGenerate(customLocalPart) {
+  setScreen("GENERATE EMAIL", [text("⏳ Memproses...")], []);
+
+  const { status, data } = await api("/api/generate", {
+    method: "POST",
+    body: { customLocalPart: customLocalPart || null },
+  });
+
+  if (status === 401) return showLogin("Sesi habis, login lagi ya.");
+
+  if (status === 200 && data.ok) {
+    return showResult(data.entry);
+  }
+
+  if (status === 409 && data.taken) {
+    return showGenSuggestions(customLocalPart, data.suggestions || [], data.error);
+  }
+
+  if (status === 429 && data.cooldown) {
+    return setScreen(
+      "GENERATE EMAIL",
+      [text(`⏳ Tunggu ${data.secondsLeft} detik lagi ya sebelum generate lagi.`)],
+      [[btn("Menu", "neutral", showMain)]]
+    );
+  }
+
+  return showGenChoose(data.error || "Terjadi kesalahan, coba lagi.");
+}
+
+// ── Result ───────────────────────────────────────────────────────────
+function showResult(entry) {
+  setScreen(
+    "GENERATE EMAIL",
+    [
+      text("📧 Email baru berhasil dibuat:"),
+      code(entry.email),
+      text("Tap tombol di bawah buat pantau inbox. Halaman itu auto-cek tiap beberapa detik sampai emailnya masuk."),
+    ],
+    [
+      [linkBtn("Buka Inbox", entry.link)],
+      [btn("Generate Lagi", "success", () => showGenChoose())],
+      [btn("Menu", "neutral", showMain)],
+    ]
+  );
+}
+
+// ── Riwayat ──────────────────────────────────────────────────────────
+async function showRiwayat() {
+  setScreen("DAFTAR EMAIL", [text("⏳ Memuat...")], []);
+  const { status, data } = await api("/api/history");
+
+  if (status === 401) return showLogin("Sesi habis, login lagi ya.");
+
+  if (status !== 200 || !data.ok) {
+    return setScreen("DAFTAR EMAIL", [text("Gagal memuat riwayat.")], [[btn("Menu", "neutral", showMain)]]);
+  }
+
+  const entries = data.entries || [];
+  if (entries.length === 0) {
+    return setScreen(
+      "DAFTAR EMAIL",
+      [text("Belum ada email yang di-generate. Tap Generate dulu.")],
+      [[btn("Generate Email", "success", showGenChoose)], [btn("Menu", "neutral", showMain)]]
+    );
+  }
+
+  const rows = entries.map((e) => [btn(e.email, "primary", () => showDetail(e))]);
+  rows.push([btn("Menu", "neutral", showMain)]);
+  setScreen("DAFTAR EMAIL", [text("Pilih email dibawah:")], rows);
+}
+
+function showDetail(entry) {
+  setScreen("RIWAYAT EMAIL", [text("📧 EMAIL:"), code(entry.email)], [
+    [linkBtn("WEB INBOX", entry.link)],
+    [btn("Hapus Email", "danger", () => showConfirmHapus(entry))],
+    [btn("Kembali", "neutral", showRiwayat)],
+  ]);
+}
+
+function showConfirmHapus(entry) {
+  setScreen(
+    "RIWAYAT EMAIL",
+    [text("📧 EMAIL:"), code(entry.email), text("⚠️ Yakin mau hapus email ini secara permanen?")],
+    [
+      [btn("Ya, Hapus", "danger", () => doDelete(entry))],
+      [btn("Batal", "neutral", () => showDetail(entry))],
+    ]
+  );
+}
+
+async function doDelete(entry) {
+  setScreen("RIWAYAT EMAIL", [text("⏳ Menghapus...")], []);
+  const { status, data } = await api("/api/delete", { method: "POST", body: { id: entry.id } });
+
+  if (status === 401) return showLogin("Sesi habis, login lagi ya.");
+
+  if (status === 200 && data.ok) {
+    return setScreen(
+      "RIWAYAT EMAIL",
+      [text(`✅ Email ${entry.email} sudah dihapus dari Cloudflare & riwayat.`)],
+      [[btn("Kembali ke daftar", "neutral", showRiwayat)]]
+    );
+  }
+
+  return setScreen(
+    "RIWAYAT EMAIL",
+    [text(data.error || "Gagal hapus, coba lagi."), text("")],
+    [[btn("Kembali", "neutral", () => showDetail(entry))]]
+  );
+}
+
+(async function init() {
+  try {
+    const { data } = await api("/api/public-config");
+    if (data.ok) window.EMAIL_DOMAIN = data.emailDomain;
+  } catch (e) {
+    // fallback: tetap lanjut meski gagal ambil domain
+  }
+
+  let loggedIn = false;
+  try {
+    const { data } = await api("/api/session");
+    loggedIn = !!(data.ok && data.loggedIn);
+  } catch (e) {
+    // gagal cek sesi -> anggap belum login
+  }
+
+  return loggedIn ? showMain() : showLogin();
+})();
