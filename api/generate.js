@@ -96,7 +96,7 @@ module.exports = async (req, res) => {
   } catch (e) {
     return sendJson(res, 502, { ok: false, error: e.message });
   }
-  const newHistory = [entry, ...history].slice(0, cfg.HISTORY_LIMIT);
+  const newHistory = [entry, ...history];
 
   try {
     await kv.putHistory(cfg, newHistory);
