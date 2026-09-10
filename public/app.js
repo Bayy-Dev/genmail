@@ -255,8 +255,24 @@ async function showRiwayat() {
   setScreen("DAFTAR EMAIL", [text("Pilih email dibawah:")], rows);
 }
 
+function formatPembuatan(ts) {
+  const d = new Date(ts);
+  const tanggal = d.toLocaleDateString("id-ID", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+  const jam = d.toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  return `${tanggal} (${jam})`;
+}
+
 function showDetail(entry) {
-  setScreen("RIWAYAT EMAIL", [text("📧 EMAIL:"), code(entry.email)], [
+  setScreen("RIWAYAT EMAIL", [text("📧 EMAIL:"), code(entry.email), text(`🕒 PEMBUATAN: ${formatPembuatan(entry.createdAt)}`)], [
     [linkBtn("WEB INBOX", entry.link)],
     [btn("Hapus Email", "danger", () => showConfirmHapus(entry))],
     [btn("Kembali", "neutral", showRiwayat)],
